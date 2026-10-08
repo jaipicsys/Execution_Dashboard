@@ -11,8 +11,8 @@ export default function Layout({ children }) {
 
     const mainGridSize = {
         sm: showNav ? 12 : 12,
-        md: showNav ? 12 : 9.5,
-        lg: showNav ? 12 : 10.5,
+        md: showNav ? 12 : 12,
+        lg: showNav ? 12 : 12,
     };
 
     const sideNavGridSize = {
@@ -28,11 +28,11 @@ export default function Layout({ children }) {
                     < Header />
                 } */}
                 <Grid container>
-                   {!showNav && (
+                   {/* {!showNav && (
                         <Grid size={sideNavGridSize}>
                             <SideNav />
                         </Grid>
-                    )}
+                    )} */}
 
                     <Grid sx={{ height: '100vh', overflowY: 'auto', bgcolor:'#f2f2f2' }} size={mainGridSize}>
                         {children}
