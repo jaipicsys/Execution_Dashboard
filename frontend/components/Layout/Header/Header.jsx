@@ -50,7 +50,7 @@ export default function Header({ title = "EXECUTION DASHBOARD" }) {
             elevation={0}
             sx={{
                 background:
-                    "linear-gradient(90deg, #0d494d 0%, #126666 50%, #0d464d 100%)",
+                    "linear-gradient(90deg, #101b18 0%, #42997f 50%, #101b18 100%)",
                 boxShadow: "none",
                 color: "#ffffff",
             }}
