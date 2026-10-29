@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 import { AppBar, Toolbar, Box, Typography } from "@mui/material";
 
 const NAV_ITEMS = [
-    "Product",
-    "Quality",
-    "Pilots",
-    "Deployments",
-    "Commercial",
-    "Team",
+    "EXECUTION DASHBOARD",
+    // "Quality",
+    // "Pilots",
+    // "Deployments",
+    // "Commercial",
+    // "Team",
 ];
 
 /* ISO week number (Mon-start), e.g. 08 Oct 2026 -> 41 */
@@ -35,7 +35,7 @@ const formatTime = (d) =>
         hour12: true,
     });
 
-export default function Header({ title = "EXECUTION DASHBOARD" }) {
+export default function Header({ title = "PRODUCT DEVELOPMENT" }) {
     const [now, setNow] = useState(new Date());
 
     // Refresh the clock every 30 seconds
