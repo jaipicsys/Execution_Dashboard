@@ -1,20 +1,29 @@
-from flask import Flask
-from flask_cors import CORS
+import os
 
-import config
-import db
-from routes import api
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+import jira_client as jira
+from dashboard import build_dashboard
+
+PROJECT = os.getenv("JIRA_PROJECT", "B517")
+ORIGINS = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://192.168.2.30:3011").split(",") if o.strip()]
+
+app = FastAPI(title="Eigenstate Dashboard API (read-only)")
+
+# Only GET is allowed, and only from your frontend addresses.
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=["GET"], allow_headers=["*"])
 
 
-def create_app():
-    app = Flask(__name__)
-    CORS(app, origins=config.CORS_ORIGINS)
-    db.init_db()
-    app.register_blueprint(api, url_prefix="/api")
-    return app
-
-
-app = create_app()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=config.PORT, debug=config.DEBUG)
+@app.get("/api/dashboard")
+def dashboard():
+    try:
+        flagged_id = jira.flagged_field_id()
+        issues = jira.search_issues(PROJECT, flagged_id)
+        versions = jira.versions(PROJECT)
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(502, f"Jira returned {e.response.status_code}. Check the URL, email, token and project key.")
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Could not reach Jira: {e}")
+    return build_dashboard(issues, versions, flagged_id)
