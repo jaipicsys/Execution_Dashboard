@@ -9,12 +9,25 @@ import jira_client as jira
 from dashboard import build_dashboard, load_projects
 
 PROJECTS = load_projects()
-ORIGINS = [o.strip() for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://192.168.2.30:3011").split(",") if o.strip()]
+ORIGINS = [
+    o.strip()
+    for o in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:3011,http://192.168.2.30:3011").split(",")
+    if o.strip()
+]
+# Also allow any page opened from this machine or from a private company network address, on any port:
+# localhost, 127.x, 192.168.x.x, 10.x.x.x and 172.16-31.x.x. Pages from the internet are still blocked.
+PRIVATE_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$"
 
 app = FastAPI(title="Eigenstate Dashboard API (read-only)")
 
 # Only GET is allowed, and only from your frontend addresses.
-app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=["GET"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ORIGINS,
+    allow_origin_regex=PRIVATE_ORIGIN_REGEX,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 def _build(cfg):
@@ -79,4 +92,4 @@ def dashboard(project: str | None = None):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "8000")), reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)  # 0.0.0.0 = reachable from other computers
