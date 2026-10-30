@@ -1,4 +1,5 @@
 """Turns raw Jira data into the numbers the dashboard shows. No Jira calls happen here."""
+import json
 import os
 import re
 from collections import Counter, defaultdict
@@ -8,13 +9,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-FEATURE_EPIC_KEY = os.getenv("FEATURE_EPIC_KEY", "").strip()
-FEATURE_EPIC_NAME = os.getenv("FEATURE_EPIC_NAME", "Development").strip()
-PHASE_REGEX = os.getenv("PHASE_REGEX", r"^\d+\.")
-AT_RISK_DAYS = int(os.getenv("AT_RISK_DAYS", "7"))
-AT_RISK_MIN_PROGRESS = int(os.getenv("AT_RISK_MIN_PROGRESS", "50"))
-TITLE = os.getenv("DASHBOARD_TITLE", "PRODUCT DEVELOPMENT")
 DASH = "—"
+
+# Defaults for every project. Each project in projects.json can override any of these.
+DEFAULTS = {
+    "title": os.getenv("DASHBOARD_TITLE", "PRODUCT DEVELOPMENT"),
+    "featureEpicKey": "",
+    "featureEpicName": os.getenv("FEATURE_EPIC_NAME", "Development"),
+    "phaseRegex": os.getenv("PHASE_REGEX", r"^\d+\."),
+    "atRiskDays": int(os.getenv("AT_RISK_DAYS", "7")),
+    "atRiskMinProgress": int(os.getenv("AT_RISK_MIN_PROGRESS", "50")),
+}
+
+
+def load_projects():
+    """Projects come from projects.json. If that file is missing, fall back to JIRA_PROJECT in .env."""
+    path = os.getenv("PROJECTS_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects.json"))
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    else:
+        raw = [{"key": os.getenv("JIRA_PROJECT", "B517"), "featureEpicKey": os.getenv("FEATURE_EPIC_KEY", "")}]
+    return [{**DEFAULTS, **p} for p in raw]
 
 
 # ------------------------------------------------------------------ small helpers
@@ -72,13 +88,15 @@ def parse(i, flagged_id):
 
 # ------------------------------------------------------------------ rules
 def progress_of(task, children):
+    if task["cat"] == "done":
+        return 100
     subs = children.get(task["key"], [])
     if subs:
         return round(100 * sum(1 for s in subs if s["cat"] == "done") / len(subs))
     return 100 if task["cat"] == "done" else 0
 
 
-def health_of(task, prog, today):
+def health_of(task, prog, today, cfg):
     """Completed / Blocked / At Risk / On Track. Rules are documented in the README."""
     if task["cat"] == "done":
         return "Completed"
@@ -88,7 +106,7 @@ def health_of(task, prog, today):
     if due:
         if due < today:
             return "At Risk"
-        if (due - today).days <= AT_RISK_DAYS and prog < AT_RISK_MIN_PROGRESS:
+        if (due - today).days <= cfg["atRiskDays"] and prog < cfg["atRiskMinProgress"]:
             return "At Risk"
     return "On Track"
 
@@ -100,7 +118,7 @@ def next_step(task, children):
 
 
 # ------------------------------------------------------------------ main
-def build_dashboard(raw_issues, versions, flagged_id, now=None):
+def build_dashboard(raw_issues, versions, flagged_id, cfg, now=None):
     now = now or datetime.now()
     today = now.date()
     week_start = today - timedelta(days=today.weekday())  # Monday
@@ -114,12 +132,19 @@ def build_dashboard(raw_issues, versions, flagged_id, now=None):
         if i["parent"]:
             children[i["parent"]].append(i)
 
-    # ---- features = tasks under the feature epic
-    if FEATURE_EPIC_KEY:
-        feat_epic = next((e for e in epics if e["key"] == FEATURE_EPIC_KEY), None)
+    # ---- features = tasks under the project's "Development" epic.
+    # A project without that epic has nothing to show, so we return None and the API skips it.
+    if cfg.get("featureEpicKey"):
+        feat_epic = next((e for e in epics if e["key"] == cfg["featureEpicKey"]), None)
     else:
-        feat_epic = next((e for e in epics if e["summary"].lower() == FEATURE_EPIC_NAME.lower()), None)
-    tasks = sorted(children.get(feat_epic["key"], []), key=lambda t: _num(t["key"])) if feat_epic else []
+        wanted = cfg["featureEpicName"].strip().casefold()
+        feat_epic = next((e for e in sorted(epics, key=lambda e: _num(e["key"])) if e["summary"].strip().casefold() == wanted), None)
+    if feat_epic is None:
+        return None
+    tasks = [t for t in children.get(feat_epic["key"], []) if not t["is_subtask"]]
+    order = {"indeterminate": 0, "new": 1, "done": 2}  # In Progress first, then To Do, then Done
+    tasks = sorted(tasks, key=lambda t: (order.get(t["cat"], 1), t["due"] or date.max, _num(t["key"])))
+    state_names = {"new": "To Do", "indeterminate": "In Progress", "done": "Done"}
 
     features = []
     for t in tasks:
@@ -129,14 +154,16 @@ def build_dashboard(raw_issues, versions, flagged_id, now=None):
             "name": t["summary"],
             "owner": t["assignee"] or "Unassigned",
             "stage": t["status"],
+            "state": state_names.get(t["cat"], "To Do"),
+            "group": t["parent_summary"] or DASH,
             "progress": prog,
-            "status": health_of(t, prog, today),
+            "status": health_of(t, prog, today, cfg),
             "overdue": bool(t["due"] and t["due"] < today and t["cat"] != "done"),
             "target": _day(t["due"]),
             "milestone": next_step(t, children),
         })
 
-    active = [f for f in features if f["status"] != "Completed"]
+    active = [f for f in features if f["state"] != "Done"]
     n_blocked_feat = sum(1 for f in active if f["status"] == "Blocked")
     n_overdue = sum(1 for f in active if f["overdue"])
     n_risk_only = sum(1 for f in active if f["status"] == "At Risk" and not f["overdue"])
@@ -173,17 +200,22 @@ def build_dashboard(raw_issues, versions, flagged_id, now=None):
     task_status = [{"name": names[k], "value": cats.get(k, 0)} for k in ("new", "indeterminate", "done")]
 
     # ---- stage stepper = phase epics
-    phases = sorted((e for e in epics if re.match(PHASE_REGEX, e["summary"])), key=lambda e: e["summary"])
+    phases = sorted((e for e in epics if re.match(cfg["phaseRegex"], e["summary"])), key=lambda e: e["summary"])
     stages = []
     for e in phases:
         kids = children.get(e["key"], [])
         done = sum(1 for k in kids if k["cat"] == "done")
         started = done > 0 or any(k["cat"] == "indeterminate" for k in kids)
-        state = "done" if kids and done == len(kids) else ("current" if started else "todo")
+        if kids:
+            state = "done" if done == len(kids) else ("current" if started else "todo")
+            value, caption = f"{done}/{len(kids)}", "tasks done"
+        else:  # phase without tasks: follow the epic's own status
+            state = "done" if e["cat"] == "done" else ("current" if e["cat"] == "indeterminate" else "todo")
+            value, caption = DASH, "no tasks"
         stages.append({
-            "label": re.sub(PHASE_REGEX + r"\s*", "", e["summary"]).strip() or e["summary"],
-            "value": f"{done}/{len(kids)}",
-            "caption": "tasks done",
+            "label": re.sub(cfg["phaseRegex"] + r"\s*", "", e["summary"]).strip() or e["summary"],
+            "value": value,
+            "caption": caption,
             "state": state,
         })
 
@@ -215,8 +247,8 @@ def build_dashboard(raw_issues, versions, flagged_id, now=None):
     iso_week = today.isocalendar()[1]
     return {
         "titleBar": {
-            "title": TITLE,
-            "subtitle": "Execution Dashboard",
+            "title": cfg["title"],
+            "subtitle": f"Execution Dashboard  –  {cfg.get('name') or cfg['key']}",
             "week": f"Week {iso_week} ({_day(week_start)} – {_day(week_end)} {week_end.year})",
             "updated": f"{now:%a}, {now.day} {now:%b %Y}  {now.hour % 12 or 12}:{now:%M} {now:%p}",
         },
@@ -232,8 +264,10 @@ def build_dashboard(raw_issues, versions, flagged_id, now=None):
         "readiness": {"stages": stages, "openBugs": open_bugs, "release": release},
         "completed": completed,
         "meta": {
+            "project": cfg["key"],
+            "name": cfg.get("name") or cfg["key"],
             "featureEpic": feat_epic["key"] if feat_epic else None,
             "workItemsRead": len(items),
-            "rules": {"atRiskDays": AT_RISK_DAYS, "atRiskMinProgress": AT_RISK_MIN_PROGRESS},
+            "rules": {"atRiskDays": cfg["atRiskDays"], "atRiskMinProgress": cfg["atRiskMinProgress"]},
         },
     }

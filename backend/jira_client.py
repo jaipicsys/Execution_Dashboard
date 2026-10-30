@@ -56,5 +56,9 @@ def search_issues(project: str, flagged_id: str | None) -> list[dict]:
     return issues
 
 
+def project_name(project: str) -> str:
+    return _get(f"/rest/api/3/project/{project}", ttl=3600).get("name") or project
+
+
 def versions(project: str) -> list[dict]:
     return _get(f"/rest/api/3/project/{project}/versions")

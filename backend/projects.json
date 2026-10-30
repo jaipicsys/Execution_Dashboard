@@ -1,0 +1,9 @@
+[
+  {
+    "key": "B517"
+  },
+  {
+    "key": "KAN",
+    "phaseRegex": "^T641\\s*[–-]\\s*Phase\\s*\\d+:\\s*"
+  }
+]
