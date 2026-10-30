@@ -9,11 +9,13 @@ import TaskStatusDistribution from "./Taskstatusdistribution/Taskstatusdistribut
 import TestingReleaseReadiness from "./Testingreleasereadiness/Testingreleasereadiness";
 import CompletedThisWeek from "./Completedthisweek/Completedthisweek";
 
-// Vite: set VITE_API_URL (and optionally VITE_ROTATE_SECONDS) in .env.
-// Create React App: use process.env.REACT_APP_... instead.
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:8000";
-const ROTATE_MS = Number(import.meta.env?.VITE_ROTATE_SECONDS || 10) * 1000;
-const REFRESH_MS = 15000;
+// ---- Settings (no .env needed) ----
+const API_URL = "http://192.168.2.30:8000"; // the backend, always this address
+const ROTATE_SECONDS = 10; // time each project stays on screen
+const REFRESH_SECONDS = 15; // how often data is reloaded from the backend
+
+const ROTATE_MS = ROTATE_SECONDS * 1000;
+const REFRESH_MS = REFRESH_SECONDS * 1000;
 
 const fill = keyframes`
   from { width: 0%; }
@@ -25,7 +27,7 @@ const Dashboard = () => {
   const [index, setIndex] = useState(0);
   const [error, setError] = useState(null);
 
-  // Load all projects, and refresh every minute.
+  // Load all projects now, then again every REFRESH_MS.
   useEffect(() => {
     let alive = true;
     const load = async () => {
