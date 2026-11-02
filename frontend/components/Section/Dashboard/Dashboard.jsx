@@ -69,7 +69,7 @@ const Dashboard = () => {
     return (
       <>
         <Header />
-        <Box sx={{ minHeight: "100vh", p: 2, bgcolor: "#f3f6f9" }}>
+        <Box sx={{ minHeight: "92vh", p: 2, bgcolor: "#f3f6f9" }}>
           {error ? (
             <Alert severity="error">
               Could not load the dashboard: {error}
@@ -117,29 +117,29 @@ const Dashboard = () => {
               </Box>
             )}
 
-            <Box sx={{ minHeight: "100vh", p: 2, bgcolor: "#f3f6f9" }}>
+            <Box sx={{ minHeight: "92vh", p: 1, bgcolor: "#f3f6f9" }}>
               {error && (
                 <Alert severity="warning" sx={{ mb: 2 }}>
                   Showing the last loaded data. Refresh failed: {error}
                 </Alert>
               )}
-              <Grid container spacing={2}>
+              <Grid container spacing={1}>
                 <Grid size={12}>
                   <KpiCards data={data.kpis} />
                 </Grid>
 
                 <Grid size={{ xs: 12, lg: 8 }}>
-                  <Stack spacing={2}>
+                  <Stack spacing={1}>
                     <FeatureTracker features={data.features} />
                     <TopBlockers blockers={data.blockers} />
+                    <CompletedThisWeek items={data.completed} />
                   </Stack>
                 </Grid>
 
                 <Grid size={{ xs: 12, lg: 4 }}>
-                  <Stack spacing={2}>
+                  <Stack spacing={1}>
                     <TaskStatusDistribution data={data.taskStatus} />
                     <TestingReleaseReadiness data={data.readiness} />
-                    <CompletedThisWeek items={data.completed} />
                   </Stack>
                 </Grid>
               </Grid>
