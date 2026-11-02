@@ -5,27 +5,30 @@
     python3 main.py        (or: uvicorn main:app --reload --port 8000)
 
 Endpoints (GET only):
-- /api/dashboards          all projects, in the order of projects.json  (the page uses this)
-- /api/dashboard?project=B517   one project (default: the first one)
-- /api/projects            configured projects, and whether each is shown (needs a Development epic)
+- /api/dashboards          all projects that have a Development epic, sorted by project key  (the page uses this)
+- /api/dashboard?project=B517   one project
+- /api/projects            every project the account can see, and whether it is shown (with the reason if not)
 
-## Adding a project
-Add an entry to projects.json and restart the backend. Only "key" is required.
+## How projects are found (automatic)
+Nothing needs to be listed. On each refresh the backend asks Jira for epics titled "Development" (FEATURE_EPIC_NAME),
+across all projects the token's account can see. Every project with such an epic is shown; its tasks are the features.
+A project without that epic is not shown. New projects appear on their own once they have the epic.
 
-    {
-      "key": "ABC",                       Jira project key
-      "featureEpicKey": "ABC-12",         optional: use this epic instead of the one named "Development"
-      "phaseRegex": "^\\d+\\.",           epics matching this are the stages in the stepper
-      "title": "PRODUCT DEVELOPMENT",
-      "atRiskDays": 7,
-      "atRiskMinProgress": 50
-    }
+## projects.json (optional)
+Per-project overrides only. It may be `[]` or missing. Examples:
 
-Any setting you leave out uses the default from .env. The account behind the token must be able to browse every project listed.
-If one project fails (for example no permission), only that slide shows an error; the others keep working.
+    [
+      { "key": "KAN", "hide": true },
+      { "key": "B517", "name": "Execution - B517", "phaseRegex": "^Stage\\s*\\d+:\\s*", "atRiskDays": 5 }
+    ]
+
+Settings: hide, name, title, featureEpicKey (use this epic instead of the one found), phaseRegex, atRiskDays, atRiskMinProgress.
+Restart the backend after editing it.
+
+The default phaseRegex recognises "1. Name", "Phase 1: Name" and "T641 – Phase 1: Name". Remove PHASE_REGEX from .env to use it.
 
 ## How each number is calculated
-- Standard rule: every project has an epic named "Development" (FEATURE_EPIC_NAME). Its tasks are the features.
+- Standard rule: every project has an epic named "Development" (FEATURE_EPIC_NAME), matched by exact title (ignoring case and spaces). Its tasks are the features.
   Tracker rows: those tasks, In Progress first, then To Do, then Done. Subtasks are not listed; they set the progress %.
   A project WITHOUT that epic is not shown at all (left out of the rotation, and logged as a warning).
   If an epic has a different name, set featureEpicKey for that project in projects.json.

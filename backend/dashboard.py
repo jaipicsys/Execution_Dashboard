@@ -16,21 +16,21 @@ DEFAULTS = {
     "title": os.getenv("DASHBOARD_TITLE", "PRODUCT DEVELOPMENT"),
     "featureEpicKey": "",
     "featureEpicName": os.getenv("FEATURE_EPIC_NAME", "Development"),
-    "phaseRegex": os.getenv("PHASE_REGEX", r"^\d+\."),
+    "phaseRegex": os.getenv("PHASE_REGEX", r"^(?:[A-Za-z0-9]+\s*[–-]\s*)?(?:Phase\s*)?\d+\s*[.:]\s*"),
     "atRiskDays": int(os.getenv("AT_RISK_DAYS", "7")),
     "atRiskMinProgress": int(os.getenv("AT_RISK_MIN_PROGRESS", "50")),
 }
 
 
-def load_projects():
-    """Projects come from projects.json. If that file is missing, fall back to JIRA_PROJECT in .env."""
+def load_overrides():
+    """Optional projects.json: per-project settings that replace the defaults, e.g. {"key": "KAN", "hide": true}.
+    Projects themselves are found automatically from Jira, so this file may be empty or missing."""
     path = os.getenv("PROJECTS_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects.json"))
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as fh:
-            raw = json.load(fh)
-    else:
-        raw = [{"key": os.getenv("JIRA_PROJECT", "B517"), "featureEpicKey": os.getenv("FEATURE_EPIC_KEY", "")}]
-    return [{**DEFAULTS, **p} for p in raw]
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        raw = json.load(fh)
+    return {p["key"]: p for p in raw if isinstance(p, dict) and p.get("key")}
 
 
 # ------------------------------------------------------------------ small helpers
@@ -200,7 +200,7 @@ def build_dashboard(raw_issues, versions, flagged_id, cfg, now=None):
     task_status = [{"name": names[k], "value": cats.get(k, 0)} for k in ("new", "indeterminate", "done")]
 
     # ---- stage stepper = phase epics
-    phases = sorted((e for e in epics if re.match(cfg["phaseRegex"], e["summary"])), key=lambda e: e["summary"])
+    phases = sorted((e for e in epics if re.match(cfg["phaseRegex"], e["summary"])), key=lambda e: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", e["summary"])])
     stages = []
     for e in phases:
         kids = children.get(e["key"], [])
